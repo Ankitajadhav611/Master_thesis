@@ -173,24 +173,8 @@ void r565_to_rgb(uint16_t color, uint8_t *r, uint8_t *g, uint8_t *b) {
     *g = (color & 0x07E0) >> 3;
     *b = (color & 0x1F) << 3;
 }
-// Convert RBG565 pixels into Grayscale pixels
-void r565_to_gray(uint16_t color, uint8_t *gray) {
-    // Extract the intensity (brightness) from the RGB565 pixel
-    int16_t red = ((color & 0xF800)>>11);
-    int16_t green = ((color & 0x07E0)>>5);
-    int16_t blue = (color & 0x001F);
-    int16_t grayscale = (0.2126 * red) + (0.7152 * green ) + (0.0722 * blue);
-    *gray=(grayscale<<11)+(grayscale<<6)+grayscale;
-    //*gray = ((color & 0xF800) >> 11) + ((color & 0x07E0) >> 5) + ((color & 0x1F));
 
 
-    // uint8_t r = (color & 0xF800) >> 8;
-    // uint8_t g = (color & 0x07E0) >> 3;
-    // uint8_t b = (color & 0x1F) << 3;
-
-    // *gray = (r * 0.299) + (g * 0.587) + (b * 0.114);
-
-}
 // Data ingestion helper function for grabbing pixels from a framebuffer into Edge Impulse
 // This method should be used as the .get_data callback of a signal_t 
 int cutout_get_data(size_t offset, size_t length, float *out_ptr) {
@@ -217,30 +201,6 @@ int cutout_get_data(size_t offset, size_t length, float *out_ptr) {
         r565_to_rgb(pixel, &r, &g, &b);
         float pixel_f = (r << 16) + (g << 8) + b;
         out_ptr[out_ptr_ix] = pixel_f;
-        // //Calculate the grayscale value from RGB values
-        // float pixel_f =  0.299 * r + 0.587 * g + 0.114 *  b;
-
-        //grayscale image
-        // uint8_t gray;
-        // r565_to_gray(pixel, &gray);
-        // out_ptr[out_ptr_ix] = gray;
-
-        // Serial.println(gray);
-        // Extracting individual color components
-        // int red = (pixel >> 11) & 0x1F;
-        // int green = (pixel >> 5) & 0x3F;
-        // int blue = pixel & 0x1F;
-
-        // // Normalize color values to the range 0-255
-        // red = (red * 255) / 31;
-        // green = (green * 255) / 63;
-        // blue = (blue * 255) / 31;
-
-        // // Calculate grayscale value
-        // //int grayscale = 0.299 * red + 0.587 * green + 0.114 * blue;
-        // float grayscale = 0.299 * red + 0.587 * green + 0.114 * blue;
-        // out_ptr[out_ptr_ix] = pixel_f;
-  
         out_ptr_ix++;
         offset++;
         bytes_left--;
