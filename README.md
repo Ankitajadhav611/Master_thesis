@@ -5,7 +5,7 @@ This code inputs image and classify object in image
 
 Main.cpp is under test/test_code
 - code flow
-  1. Setup camera module
+  1. setup camera module
   2. capture image with 320x240 resolution
   3. decode into jpeg and crop into input resolution 96x96
   4. convert image from RGB565 format to RGB888
