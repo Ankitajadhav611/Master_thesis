@@ -1,6 +1,6 @@
 # Master_thesis
-Human Detection System for Mars Habitat \n
-This code inputs image and classify object in image
+Human Detection System for Mars Habitat.
+Goal to detect and count the present of human in scenario.
 
 
 # Main.cpp is under test/test_code
