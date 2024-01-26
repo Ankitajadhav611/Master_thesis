@@ -1,3 +1,4 @@
+// grayscale image with 96x96
 #include <JPEGDecoder.h>
 #include <lab_human_detection_inferencing.h>
 #include <ArduCAM.h>
@@ -16,7 +17,7 @@ const int cutout_row_start = (FRAME_BUFFER_ROWS - CUTOUT_ROWS) / 2;
 const int cutout_col_start = (FRAME_BUFFER_COLS - CUTOUT_COLS) / 2;
 
 uint16_t* pixel_buffer;
-char* jpeg_buffer;
+uint8_t* jpeg_buffer;
 //using namespace ei::image::processing;
 const int CS = 34;
 const int CAM_POWER_ON = A10;
@@ -47,7 +48,7 @@ void ei_printf(const char *format, ...) {
 #define FORMAT_SPIFFS_IF_FAILED true
 char pname[20];
 byte buf[256];
-uint8_t temp = 0, temp_last = 0;
+//uint8_t temp = 0, temp_last = 0;
 uint32_t length = 0;
 bool is_header = false;
 static int i = 0;
@@ -55,6 +56,7 @@ static int i = 0;
 void capture_resize_image(uint16_t*& pixel_buffer, size_t width, size_t height){
   
   uint32_t jpeg_length = 0;
+  uint8_t temp = 0, temp_last = 0;
 
   myCAM.flush_fifo();
   myCAM.clear_fifo_flag();
@@ -71,7 +73,7 @@ void capture_resize_image(uint16_t*& pixel_buffer, size_t width, size_t height){
   myCAM.clear_fifo_flag();
 
   jpeg_length = myCAM.read_fifo_length();
-  jpeg_buffer = static_cast<char*>(heap_caps_malloc(jpeg_length * sizeof(uint16_t), MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM));
+  jpeg_buffer = static_cast<uint8_t*>(heap_caps_malloc(jpeg_length * sizeof(uint16_t), MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM));
   Serial.println(F("jpeg length"));
   Serial.println(jpeg_length);
   // if (jpeg_length > 20000) {
@@ -86,19 +88,49 @@ void capture_resize_image(uint16_t*& pixel_buffer, size_t width, size_t height){
 
   myCAM.CS_LOW();
   myCAM.set_fifo_burst();
-
-  uint8_t temp;
+  size_t new_jpeg_length;
   for (int index = 0; index < jpeg_length; index++){
+    //temp = SPI.transfer(0x00);
+    temp_last = temp;
     temp = SPI.transfer(0x00);
     jpeg_buffer[index] = temp;
+    if ((temp == 0xD9) && (temp_last == 0xFF)){
+      Serial.println("found last string");
+      Serial.println("last index of the buffer");
+      Serial.println(index);
+      // Calculate the new length
+      new_jpeg_length = index + 1;
+
+        // Now you can use or print the new length
+      Serial.print("New JPEG length: ");
+      Serial.println(new_jpeg_length);
+
+      // Resize the buffer to the new length
+      jpeg_buffer = static_cast<uint8_t*>(heap_caps_realloc(jpeg_buffer, new_jpeg_length * sizeof(uint8_t), MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM));
+      break;
+    }
+    // Serial.println(temp);
   }
 
   delayMicroseconds(15);
   myCAM.CS_HIGH();
 
+  // Check for the start marker (0xFFD8) at the beginning
+  if (jpeg_buffer[0] != 0xFF || jpeg_buffer[1] != 0xD8) {
+      Serial.println(F("Error: Invalid JPEG start marker"));
+      //return 0;
+  }
+
+  Serial.print("New JPEG length: ");
+  Serial.println(new_jpeg_length);
+  // // Check for the end marker (0xFFD9) at the end
+  if (jpeg_buffer[new_jpeg_length - 2] != 0xFF || jpeg_buffer[new_jpeg_length - 1] != 0xD9) {
+      Serial.println(F("Error: Invalid JPEG end marker"));
+     // return 0;
+  }
   //jpeg store data
 
-  JpegDec.decodeArray(reinterpret_cast<const uint8_t*>(jpeg_buffer), jpeg_length);
+  JpegDec.decodeArray(jpeg_buffer, jpeg_length);
 
   // Crop the image by keeping a certain number of MCUs in each dimension
   const int keep_x_mcus = width / JpegDec.MCUWidth;
@@ -153,12 +185,26 @@ void capture_resize_image(uint16_t*& pixel_buffer, size_t width, size_t height){
                 // Read the color of the pixel as 16-bit integer
                 uint16_t color = *pImg++;
 
+                //grayscale execution
+                uint8_t r, g, b;
+                r = ((color & 0xF800) >> 11) * 8;
+                g = ((color & 0x07E0) >> 5) * 4;
+                b = ((color & 0x001F) >> 0) * 8;
+
+                // Convert to grayscale by calculating luminance
+                // See https://en.wikipedia.org/wiki/Grayscale for magic numbers
+                float gray_value = (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+
+                // Convert to signed 8-bit integer by subtracting 128.
+                gray_value -= 128;
+
                 // Calculate index
                 int current_x = x_origin + mcu_col;
                 size_t index = (current_y * width) + current_x;
 
                 // Store the RGB565 pixel to the buffer
-                pixel_buffer[index] = color;
+                pixel_buffer[index] = static_cast<int8_t>(gray_value);
+
             }
         }
     }
@@ -193,6 +239,19 @@ void r565_to_gray(uint16_t color, uint8_t *gray) {
 }
 // Data ingestion helper function for grabbing pixels from a framebuffer into Edge Impulse
 // This method should be used as the .get_data callback of a signal_t 
+static int get_signal_data(size_t offset, size_t length, float *out_ptr) 
+{
+  size_t bytes_left = length;
+  size_t out_ptr_ix = 0;
+  uint8_t c;
+  for (size_t i = 0; i < length; i++) {
+      c = (pixel_buffer + offset)[i];
+      out_ptr[i] = c;
+  }
+  return 0;
+}
+
+
 int cutout_get_data(size_t offset, size_t length, float *out_ptr) {
     // so offset and length naturally operate on the *cutout*, so we need to cut it out from the real framebuffer
     size_t bytes_left = length;
@@ -210,36 +269,13 @@ int cutout_get_data(size_t offset, size_t length, float *out_ptr) {
         
         uint16_t pixelTemp = pixel_buffer[(frame_buffer_row * FRAME_BUFFER_COLS) + frame_buffer_col];
 
-        uint16_t pixel = (pixelTemp>>8) | (pixelTemp<<8);
+        // uint16_t pixel = (pixelTemp>>8) | (pixelTemp<<8);
 
-        //rgb data
-        uint8_t r, g, b;
-        r565_to_rgb(pixel, &r, &g, &b);
-        float pixel_f = (r << 16) + (g << 8) + b;
-        out_ptr[out_ptr_ix] = pixel_f;
-        // //Calculate the grayscale value from RGB values
-        // float pixel_f =  0.299 * r + 0.587 * g + 0.114 *  b;
-
-        //grayscale image
-        // uint8_t gray;
-        // r565_to_gray(pixel, &gray);
-        // out_ptr[out_ptr_ix] = gray;
-
-        // Serial.println(gray);
-        // Extracting individual color components
-        // int red = (pixel >> 11) & 0x1F;
-        // int green = (pixel >> 5) & 0x3F;
-        // int blue = pixel & 0x1F;
-
-        // // Normalize color values to the range 0-255
-        // red = (red * 255) / 31;
-        // green = (green * 255) / 63;
-        // blue = (blue * 255) / 31;
-
-        // // Calculate grayscale value
-        // //int grayscale = 0.299 * red + 0.587 * green + 0.114 * blue;
-        // float grayscale = 0.299 * red + 0.587 * green + 0.114 * blue;
-        // out_ptr[out_ptr_ix] = pixel_f;
+        // //rgb data
+        // uint8_t r, g, b;
+        // r565_to_rgb(pixel, &r, &g, &b);
+        // float pixel_f = (r << 16) + (g << 8) + b;
+        out_ptr[out_ptr_ix] = pixelTemp;
   
         out_ptr_ix++;
         offset++;
@@ -286,7 +322,7 @@ void loop(){
     //classifier signal
     signal_t signal;
     signal.total_length = CUTOUT_COLS * CUTOUT_ROWS;
-    signal.get_data = &cutout_get_data;
+    signal.get_data = &get_signal_data;
     Serial.println(F("signal get"));
     ei_impulse_result_t result = { 0 };
     EI_IMPULSE_ERROR res = run_classifier(&signal, &result, false /* debug */);
@@ -309,3 +345,4 @@ void loop(){
     pixel_buffer = nullptr;
     //ESP.deepSleep(5 * 1000000);
 } 
+
