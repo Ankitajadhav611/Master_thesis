@@ -3,8 +3,9 @@
 #include <ArduCAM.h>
 #include <Wire.h>
 #include <SPI.h>
-#include "FS.h"
-#include "SPIFFS.h"
+// this part is debugging saving captured images on flash
+// #include "FS.h"
+// #include "SPIFFS.h"
 #include <iostream>
 
 
@@ -55,9 +56,9 @@ uint32_t length = 0;
 bool is_header = false;
 //static int i = 0;
 
-void capture_resize_image(uint16_t*& pixel_buffer, size_t width, size_t height,fs::FS &fs, const char * path){
-  
-  File file ;
+void capture_resize_image(uint16_t*& pixel_buffer, size_t width, size_t height) {  //fs::FS &fs, const char * path)
+  // this part is debugging saving captured images on flash
+  // File file ;
 
   uint32_t jpeg_length = 0;
   uint8_t temp = 0, temp_last = 0;
@@ -84,11 +85,12 @@ void capture_resize_image(uint16_t*& pixel_buffer, size_t width, size_t height,f
   //   Serial.println(F("Error: buffer not large enough to hold image"));
   //   return;
   // }
-  file = fs.open(path, FILE_WRITE);
-  if (!file) {
-    Serial.println("Failed to open file for writing");
-    return;
-  }
+  // this part is debugging saving captured images on flash
+  // file = fs.open(path, FILE_WRITE);
+  // if (!file) {
+  //   Serial.println("Failed to open file for writing");
+  //   return;
+  // }
 
   if (jpeg_length == 0){
     Serial.println("No data in Arducam FIFO buffer");
@@ -116,10 +118,12 @@ void capture_resize_image(uint16_t*& pixel_buffer, size_t width, size_t height,f
 
       // Resize the buffer to the new length
       jpeg_buffer = static_cast<uint8_t*>(heap_caps_realloc(jpeg_buffer, new_jpeg_length * sizeof(uint8_t), MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM));
-      file.write(jpeg_buffer, new_jpeg_length);
 
-      // Close the file
-      file.close();
+      // this part is debugging saving captured images on flash
+      // file.write(jpeg_buffer, new_jpeg_length);
+
+      // // Close the file
+      // file.close();
       break;
     }
     // Serial.println(temp);
@@ -275,14 +279,6 @@ void r565_to_gray(uint16_t color, uint8_t *gray) {
     int16_t blue = (color & 0x001F);
     int16_t grayscale = (0.2126 * red) + (0.7152 * green ) + (0.0722 * blue);
     *gray=(grayscale<<11)+(grayscale<<6)+grayscale;
-    //*gray = ((color & 0xF800) >> 11) + ((color & 0x07E0) >> 5) + ((color & 0x1F));
-
-
-    // uint8_t r = (color & 0xF800) >> 8;
-    // uint8_t g = (color & 0x07E0) >> 3;
-    // uint8_t b = (color & 0x1F) << 3;
-
-    // *gray = (r * 0.299) + (g * 0.587) + (b * 0.114);
 
 }
 // Data ingestion helper function for grabbing pixels from a framebuffer into Edge Impulse
@@ -388,13 +384,14 @@ void setup(){
     myCAM.InitCAM();
     myCAM.write_reg(ARDUCHIP_TIM, VSYNC_LEVEL_MASK);   //VSYNC is active HIGH
     myCAM.OV5642_set_JPEG_size(OV5642_320x240);
+    // this part is debugging saving captured images on flash
     //Add support for SPIFFS
-    if (!SPIFFS.begin(FORMAT_SPIFFS_IF_FAILED)) {
-      Serial.println("SPIFFS Mount Failed");
-      return;
-    }
-    Serial.println("SPIFFS Mount Successful");
-    delay(1000);
+    // if (!SPIFFS.begin(FORMAT_SPIFFS_IF_FAILED)) {
+    //   Serial.println("SPIFFS Mount Failed");
+    //   return;
+    // }
+    // Serial.println("SPIFFS Mount Successful");
+    // delay(1000);
 }
 
 //loop
@@ -403,14 +400,15 @@ void loop(){
     size_t size = 320*240;
     pixel_buffer = static_cast<uint16_t*>(heap_caps_malloc(size * sizeof(uint16_t), MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM));
     sprintf((char*)pname, "/%05d.jpg", k);
-    capture_resize_image( pixel_buffer, EI_CLASSIFIER_INPUT_WIDTH, EI_CLASSIFIER_INPUT_HEIGHT,SPIFFS, pname);
+    capture_resize_image( pixel_buffer, EI_CLASSIFIER_INPUT_WIDTH, EI_CLASSIFIER_INPUT_HEIGHT)//SPIFFS, pname);
     k++;
     listDir(SPIFFS, "/", 0);
-    File file = SPIFFS.open("/results.txt", "a"); // Open file in append mode
-    if (!file) {
-      Serial.println("Failed to open file for writing");
-      return;
-    }
+    // this part is debugging saving captured images on flash
+    // File file = SPIFFS.open("/results.txt", "a"); // Open file in append mode
+    // if (!file) {
+    //   Serial.println("Failed to open file for writing");
+    //   return;
+    // }
     Serial.println(F("captured and resized"));
     //classifier signal
     signal_t signal;
@@ -429,9 +427,10 @@ void loop(){
           ei_printf("    %s (", bb.label);
           ei_printf_float(bb.value);
           ei_printf(") [ x: %u, y: %u, width: %u, height: %u ]\n", bb.x, bb.y, bb.width, bb.height);
-          file.printf("Image: %s, Bounding Box: [ x: %u, y: %u, width: %u, height: %u ]\n",
-              pname, bb.x, bb.y, bb.width, bb.height);
-          file.close();
+	  // this part is debugging saving captured images on flash
+          // file.printf("Image: %s, Bounding Box: [ x: %u, y: %u, width: %u, height: %u ]\n",
+          //     pname, bb.x, bb.y, bb.width, bb.height);
+          // file.close();
       }
 
       if (!bb_found) {
